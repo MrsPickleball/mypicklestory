@@ -43,8 +43,8 @@ let games = [];
 // Load entries from storage
 async function loadEntries() {
   try {
-    const res = await window.storage.get('pickle:entries');
-    if (res) entries = JSON.parse(res.value);
+    const data = localStorage.getItem('pickle:entries');
+    if (data) entries = JSON.parse(data);
   } catch (e) {
     entries = [];
   }
@@ -53,7 +53,7 @@ async function loadEntries() {
 // Save entries to storage
 async function saveEntries() {
   try {
-    await window.storage.set('pickle:entries', JSON.stringify(entries));
+    localStorage.setItem('pickle:entries', JSON.stringify(entries));
   } catch (e) {
     console.error('Save error:', e);
     // Don't throw, just log - entries are in memory anyway
