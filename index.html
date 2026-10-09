@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Pickle Story</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+    #app { max-width: 500px; margin: 0 auto; background: white; min-height: 100vh; }
+    .header { background: #1D9E75; color: white; padding: 20px; text-align: center; }
+    .card { background: white; padding: 16px; margin: 12px; border-radius: 8px; border: 1px solid #ddd; }
+    .btn { background: #1D9E75; color: white; border: none; border-radius: 6px; padding: 10px 16px; font-size: 15px; cursor: pointer; width: 100%; margin-bottom: 8px; }
+    .btn:active { background: #168a66; }
+    .btn-cancel { background: #f0f0f0; color: #333; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 13px; font-weight: 500; color: #666; margin-bottom: 6px; }
+    .field input, .field textarea, .field select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    .entry-row { display: flex; gap: 12px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; }
+    .entry-thumb { width: 50px; height: 50px; border-radius: 6px; background: #e8f5e9; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; overflow: hidden; }
+    .entry-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .entry-text { flex: 1; }
+    .entry-title { font-weight: 500; font-size: 14px; }
+    .entry-date { font-size: 12px; color: #999; margin-top: 2px; }
+    .game-card { background: #f9f9f9; padding: 10px; margin: 8px 0; border-radius: 4px; border: 1px solid #eee; }
+    .game-fields { display: flex; flex-direction: column; gap: 6px; }
+    .game-row { display: flex; gap: 6px; align-items: center; }
+    .game-row input { flex: 1; padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 3px; }
+    .game-row button { padding: 4px 8px; background: none; border: 1px solid #ccc; cursor: pointer; border-radius: 3px; }
+
+  </style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+let entries = [];
+let view = 'list';
+let editEntry = null;
+let games = [];
+
+// Load entries from storage
+async function loadEntries() {
+  try {
+    const res = await window.storage.get('pickle:entries');
+    if (res) entries = JSON.parse(res.value);
+  } catch (e) {
+    entries = [];
+  }
+}
+
+// Save entries to storage
+async function saveEntries() {
+  try {
+    await window.storage.set('pickle:entries', JSON.stringify(entries));
+  } catch (e) {
+    console.error('Save error:', e);
+    // Don't throw, just log - entries are in memory anyway
+  }
+}
+
+// Format date
+function fmtDate(d) {
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString(undefined, { day: 'short', month: 'short', year: 'numeric' });
+}
+
+// Render list view
+function renderList() {
+  const sorted = [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const icons = { tournament: '🏆', coaching: '👨‍🏫', course: '📚', milestone: '⭐' };
+  
+  let html = '<div class="header"><h1>My Pickle Story</h1></div>';
+  html += '<div class="card">';
+  
+  if (sorted.length === 0) {
+    html += '<p style="text-align:center;color:#999;padding:20px;">No entries yet. Tap the button below to start.</p>';
+  } else {
+    sorted.forEach(e => {
+      let title = '';
+      if (e.type === 'tournament') title = e.event || 'Tournament';
+      else if (e.type === 'coaching') title = 'Coaching: ' + (e.coach || 'coach');
+      else if (e.type === 'course') title = e.courseName || 'Course';
+      else if (e.type === 'milestone') title = e.milestone || 'Milestone';
+      
+      const thumb = icons[e.type];
+      html += `<div class="entry-row" onclick="showDetail('${e.id}')">
+        <div class="entry-thumb">${thumb}</div>
+        <div class="entry-text">
+          <div class="entry-title">${title}</div>
+          <div class="entry-date">${fmtDate(e.date)}</div>
+        </div>
+      </div>`;
+    });
+  }
+  
+  html += '</div>';
+  html += '<div style="padding:12px;"><button class="btn" onclick="goAddNew()">+ Add Entry</button></div>';
+  
+  document.getElementById('app').innerHTML = html;
+}
+
+// Show detail
+function showDetail(id) {
+  editEntry = entries.find(e => e.id === id);
+  if (!editEntry) return;
+  view = 'detail';
+  renderDetail();
+}
+
+// Render detail
+function renderDetail() {
+  const e = editEntry;
+  const icons = { tournament: '🏆', coaching: '👨‍🏫', course: '📚', milestone: '⭐' };
+  
+  let html = '<div class="header"><h2>' + icons[e.type] + ' ' + e.type + '</h2></div>';
+  html += '<div class="card">';
+  
+  // Content by type
+  if (e.type === 'tournament') {
+    html += `<div><strong>${e.event}</strong></div>`;
+    html += `<div style="font-size:12px;color:#999;margin-bottom:12px;">${fmtDate(e.date)}${e.location ? ' · ' + e.location : ''}${e.partners ? ' · with ' + e.partners : ''}</div>`;
+    if (e.category) html += `<div style="margin-bottom:8px;"><span style="background:#e8f5e9;color:#1D9E75;padding:3px 8px;border-radius:4px;font-size:12px;">${e.category}</span></div>`;
+    
+    if (e.games && e.games.length > 0) {
+      html += '<div style="margin-top:12px;"><strong style="font-size:13px;">Games:</strong>';
+      e.games.forEach(g => {
+        html += `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid #eee;">
+          <div>${g.stage}</div>
+          ${g.opponent ? '<div style="color:#999;">vs ' + g.opponent + '</div>' : ''}
+          <div style="font-weight:500;color:#1D9E75;">${g.score}</div>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    
+    if (e.result) html += `<div style="margin-top:8px;"><span style="background:#e3f2fd;color:#1976d2;padding:3px 8px;border-radius:4px;font-size:12px;">${e.result}</span></div>`;
+    if (e.notes) html += `<div style="margin-top:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${e.notes}</div>`;
+  } 
+  else if (e.type === 'coaching') {
+    html += `<div><strong>Coach: ${e.coach}</strong></div>`;
+    html += `<div style="font-size:12px;color:#999;margin-bottom:12px;">${fmtDate(e.date)}</div>`;
+    if (e.topic) html += `<div style="margin-bottom:8px;"><strong style="font-size:13px;">Topic:</strong> ${e.topic}</div>`;
+    if (e.improvement) html += `<div style="margin-bottom:8px;"><strong style="font-size:13px;">To improve:</strong> ${e.improvement}</div>`;
+    if (e.notes) html += `<div style="margin-top:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${e.notes}</div>`;
+  }
+  else if (e.type === 'course') {
+    html += `<div><strong>${e.courseName}</strong></div>`;
+    html += `<div style="font-size:12px;color:#999;margin-bottom:12px;">${fmtDate(e.date)}${e.location ? ' · ' + e.location : ''}</div>`;
+    if (e.result) html += `<div style="margin-bottom:8px;"><span style="background:#e8f5e9;color:#1D9E75;padding:3px 8px;border-radius:4px;font-size:12px;">${e.result}</span></div>`;
+    if (e.notes) html += `<div style="margin-top:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${e.notes}</div>`;
+  }
+  else if (e.type === 'milestone') {
+    html += `<div><strong>${e.milestone}</strong></div>`;
+    html += `<div style="font-size:12px;color:#999;margin-bottom:12px;">${fmtDate(e.date)}</div>`;
+    if (e.notes) html += `<div style="margin-top:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${e.notes}</div>`;
+  }
+  
+  html += '</div>';
+  html += '<div style="padding:12px;"><button class="btn btn-cancel" onclick="goList()">Back</button><button class="btn" style="background:#c0392b;" onclick="deleteEntry()">Delete</button></div>';
+  
+  document.getElementById('app').innerHTML = html;
+}
+
+// Delete entry
+function deleteEntry() {
+  if (!confirm('Delete this entry?')) return;
+  entries = entries.filter(e => e.id !== editEntry.id);
+  saveEntries();
+  goList();
+}
+
+// Go to add new
+function goAddNew() {
+  editEntry = null;
+  games = [{ stage: 'Round robin - Game 1', opponent: '', score: '' }];
+  view = 'add';
+  renderAdd();
+}
+
+// Render add form
+function renderAdd() {
+  let html = '<div class="header"><h2>Add Entry</h2></div>';
+  html += '<div class="card">';
+  
+  // Date
+  const today = new Date().toISOString().slice(0, 10);
+  html += `<div class="field">
+    <label>Date *</label>
+    <input type="date" id="date" value="${today}">
+  </div>`;
+  
+  // Type selector
+  html += `<div class="field">
+    <label>Type *</label>
+    <select id="type" onchange="switchType()">
+      <option value="tournament">Tournament</option>
+      <option value="coaching">Coaching</option>
+      <option value="course">Course</option>
+      <option value="milestone">Milestone</option>
+    </select>
+  </div>`;
+  
+  // Type-specific fields
+  html += '<div id="typeFields"></div>';
+  
+  html += '<div id="errorMsg" style="color:red;font-size:12px;margin-bottom:8px;"></div>';
+  html += '</div>';
+  html += '<div style="padding:12px;"><button class="btn" onclick="doSave()">Save</button><button class="btn btn-cancel" onclick="goList()">Cancel</button></div>';
+  
+  document.getElementById('app').innerHTML = html;
+  switchType();
+}
+
+// Switch entry type
+function switchType() {
+  const type = document.getElementById('type').value;
+  let html = '';
+  
+  if (type === 'tournament') {
+    html += `<div class="field"><label>Event name *</label><input type="text" id="event" placeholder="Summer Open"></div>`;
+    html += `<div class="field"><label>Category</label><input type="text" id="category" placeholder="Women's 60+ 4.0"></div>`;
+    html += `<div class="field"><label>Location</label><input type="text" id="location" placeholder="Brighton"></div>`;
+    html += `<div class="field"><label>Partner(s)</label><input type="text" id="partners" placeholder="Dana"></div>`;
+    
+    html += '<div class="field"><label>Games</label><div id="gamesContainer"></div></div>';
+    
+    html += `<div class="field"><label>Final result</label><input type="text" id="result" placeholder="1st place"></div>`;
+    html += `<div class="field"><label>Notes</label><textarea id="notes" placeholder="How did it go?" rows="3"></textarea></div>`;
+  }
+  else if (type === 'coaching') {
+    html += `<div class="field"><label>Coach name *</label><input type="text" id="coach" placeholder="Sam"></div>`;
+    html += `<div class="field"><label>What we worked on</label><input type="text" id="topic" placeholder="Backhand dinks"></div>`;
+    html += `<div class="field"><label>Areas to improve</label><textarea id="improvement" placeholder="" rows="3"></textarea></div>`;
+    html += `<div class="field"><label>Notes</label><textarea id="notes" placeholder="" rows="3"></textarea></div>`;
+  }
+  else if (type === 'course') {
+    html += `<div class="field"><label>Course name *</label><input type="text" id="courseName" placeholder="Leaders Course"></div>`;
+    html += `<div class="field"><label>Location</label><input type="text" id="location" placeholder="Whalley"></div>`;
+    html += `<div class="field"><label>Result</label><select id="result"><option value="">--</option><option value="Passed">Passed</option><option value="Completed">Completed</option></select></div>`;
+    html += `<div class="field"><label>Notes</label><textarea id="notes" placeholder="" rows="3"></textarea></div>`;
+  }
+  else if (type === 'milestone') {
+    html += `<div class="field"><label>Milestone *</label><input type="text" id="milestone" placeholder="First tournament win"></div>`;
+    html += `<div class="field"><label>Notes</label><textarea id="notes" placeholder="" rows="3"></textarea></div>`;
+  }
+  
+  document.getElementById('typeFields').innerHTML = html;
+  
+  // Render games if tournament
+  if (type === 'tournament') {
+    renderGames();
+  }
+}
+
+// Add game
+function addGame() {
+  games.push({ stage: 'Round robin - Game ' + (games.length + 1), opponent: '', score: '' });
+  renderGames();
+}
+
+// Remove game
+function removeGame(i) {
+  games.splice(i, 1);
+  renderGames();
+}
+
+// Render just the games section (not whole form)
+function renderGames() {
+  let html = '';
+  games.forEach((g, i) => {
+    // Build options dynamically based on game count
+    let stageOptions = '';
+    
+    // Add game 1-8 options
+    for (let n = 1; n <= 8; n++) {
+      const val = 'Round robin - Game ' + n;
+      const selected = g.stage === val ? 'selected' : '';
+      stageOptions += `<option value="${val}" ${selected}>Game ${n}</option>`;
+    }
+    
+    // Always add knockout stages
+    const knockoutStages = [
+      { value: 'Qualified from group', label: 'Qualified from group' },
+      { value: 'Round of 16', label: 'Round of 16' },
+      { value: 'Quarter-final', label: 'Quarter-final' },
+      { value: 'Semi-final', label: 'Semi-final' },
+      { value: 'Final', label: 'Final' }
+    ];
+    
+    knockoutStages.forEach(stage => {
+      const selected = g.stage === stage.value ? 'selected' : '';
+      stageOptions += `<option value="${stage.value}" ${selected}>${stage.label}</option>`;
+    });
+    
+    html += `<div class="game-card" id="game${i}">
+      <div class="game-row">
+        <select id="stage${i}" onchange="games[${i}].stage=this.value">
+          ${stageOptions}
+        </select>
+        ${i > 0 ? `<button type="button" onclick="removeGame(${i})">Remove</button>` : ''}
+      </div>
+      <input type="text" id="opponent${i}" placeholder="Opponent" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:3px;font-size:13px;margin-bottom:4px;" value="${g.opponent}" onchange="games[${i}].opponent=this.value">
+      <input type="text" id="score${i}" placeholder="Score (11-7)" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:3px;font-size:13px;" value="${g.score}" onchange="games[${i}].score=this.value">
+    </div>`;
+  });
+  html += `<button type="button" class="btn" style="background:#f0f0f0;color:#333;margin-top:8px;" onclick="addGame()">+ Add Game</button>`;
+  document.getElementById('gamesContainer').innerHTML = html;
+}
+
+// Save entry
+async function doSave() {
+  const date = document.getElementById('date').value;
+  const type = document.getElementById('type').value;
+  const err = document.getElementById('errorMsg');
+  err.textContent = '';
+  
+  if (!date) { err.textContent = 'Date required'; return; }
+  
+  // Capture all game values
+  if (type === 'tournament') {
+    games.forEach((g, i) => {
+      const sEl = document.getElementById('stage' + i);
+      const oEl = document.getElementById('opponent' + i);
+      const scEl = document.getElementById('score' + i);
+      if (sEl) g.stage = sEl.value;
+      if (oEl) g.opponent = oEl.value;
+      if (scEl) g.score = scEl.value;
+    });
+  }
+  
+  // Create entry (photos skipped for now - will add in production version)
+  const entry = {
+    id: 'e' + Date.now(),
+    date,
+    type
+  };
+  
+  // Store photos in memory map
+  if (photoData.length > 0) {
+    photos[entry.id] = photoData;
+  }
+  
+  // Type-specific fields
+  if (type === 'tournament') {
+    const event = document.getElementById('event').value.trim();
+    if (!event) { err.textContent = 'Event name required'; return; }
+    entry.event = event;
+    entry.category = document.getElementById('category').value.trim();
+    entry.location = document.getElementById('location').value.trim();
+    entry.partners = document.getElementById('partners').value.trim();
+    entry.games = games.filter(g => g.score.trim());
+    entry.result = document.getElementById('result').value.trim();
+    entry.notes = document.getElementById('notes').value.trim();
+  }
+  else if (type === 'coaching') {
+    const coach = document.getElementById('coach').value.trim();
+    if (!coach) { err.textContent = 'Coach name required'; return; }
+    entry.coach = coach;
+    entry.topic = document.getElementById('topic').value.trim();
+    entry.improvement = document.getElementById('improvement').value.trim();
+    entry.notes = document.getElementById('notes').value.trim();
+  }
+  else if (type === 'course') {
+    const courseName = document.getElementById('courseName').value.trim();
+    if (!courseName) { err.textContent = 'Course name required'; return; }
+    entry.courseName = courseName;
+    entry.location = document.getElementById('location').value.trim();
+    entry.result = document.getElementById('result').value;
+    entry.notes = document.getElementById('notes').value.trim();
+  }
+  else if (type === 'milestone') {
+    const milestone = document.getElementById('milestone').value.trim();
+    if (!milestone) { err.textContent = 'Milestone required'; return; }
+    entry.milestone = milestone;
+    entry.notes = document.getElementById('notes').value.trim();
+  }
+  
+  entries.push(entry);
+  await saveEntries();
+  goList();
+}
+
+// Navigate
+function goList() {
+  view = 'list';
+  renderList();
+}
+
+// Init
+async function init() {
+  await loadEntries();
+  renderList();
+}
+
+init();
+</script>
+
+</body>
+</html>
